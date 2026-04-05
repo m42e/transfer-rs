@@ -29,22 +29,18 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             binary: transfer-rs
-            archive: transfer-rs-${{ env.RELEASE_TAG }}-x86_64-unknown-linux-gnu.tar.gz
             rust_targets: x86_64-unknown-linux-gnu
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             binary: transfer-rs.exe
-            archive: transfer-rs-${{ env.RELEASE_TAG }}-x86_64-pc-windows-msvc.zip
             rust_targets: x86_64-pc-windows-msvc
           - os: macos-14
             target: x86_64-apple-darwin
             binary: transfer-rs
-            archive: transfer-rs-${{ env.RELEASE_TAG }}-x86_64-apple-darwin.tar.gz
             rust_targets: x86_64-apple-darwin
           - os: macos-14
             target: aarch64-apple-darwin
             binary: transfer-rs
-            archive: transfer-rs-${{ env.RELEASE_TAG }}-aarch64-apple-darwin.tar.gz
             rust_targets: aarch64-apple-darwin
 
     steps:
@@ -79,23 +75,34 @@ jobs:
       - name: Build release binary
         run: cargo build --release --locked --target ${{ matrix.target }}
 
+      - name: Resolve archive name
+        id: archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          extension='tar.gz'
+          if [[ '${{ runner.os }}' == 'Windows' ]]; then
+            extension='zip'
+          fi
+          echo "name=transfer-rs-${RELEASE_TAG}-${{ matrix.target }}.${extension}" >> "$GITHUB_OUTPUT"
+
       - name: Package Unix archive
         if: runner.os != 'Windows'
         shell: bash
         run: |
           set -euo pipefail
-          tar -czf "${{ matrix.archive }}" -C "target/${{ matrix.target }}/release" "${{ matrix.binary }}"
+          tar -czf "${{ steps.archive.outputs.name }}" -C "target/${{ matrix.target }}/release" "${{ matrix.binary }}"
 
       - name: Package Windows archive
         if: runner.os == 'Windows'
         shell: pwsh
-        run: Compress-Archive -Path "target/${{ matrix.target }}/release/${{ matrix.binary }}" -DestinationPath "${{ matrix.archive }}"
+        run: Compress-Archive -Path "target/${{ matrix.target }}/release/${{ matrix.binary }}" -DestinationPath "${{ steps.archive.outputs.name }}"
 
       - name: Upload packaged artifact
         uses: actions/upload-artifact@v4
         with:
           name: release-${{ matrix.target }}
-          path: ${{ matrix.archive }}
+          path: ${{ steps.archive.outputs.name }}
           if-no-files-found: error
 
   publish:
