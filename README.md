@@ -143,6 +143,8 @@ GitHub Actions builds the project on Linux, Windows, and macOS for pushes to `ma
 
 To prepare a release in GitHub Actions, run the manual `Prepare Release PR` workflow and provide the next version number without the leading `v`.
 
+Repository Settings > Actions > General must use `Read and write permissions` and enable `Allow GitHub Actions to create and approve pull requests`, or the workflow will stop before opening the release PR.
+
 The workflow updates `Cargo.toml` and `Cargo.lock`, regenerates `demo/usage-demo.mp4` and `demo/usage-demo.gif`, generates `release-notes/vX.Y.Z.md`, uploads those files as workflow artifacts, and opens a `chore(release): prepare vX.Y.Z` pull request for review.
 
 After you review the generated release notes and demo in that PR, merge it into `main`. A follow-up workflow tags the merged commit as `vX.Y.Z`, and the release workflow publishes the GitHub release from that reviewed tag using the checked-in `release-notes/vX.Y.Z.md` file when present.
