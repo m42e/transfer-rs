@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   tag:
@@ -66,8 +67,23 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Create and push release tag
+        id: create_tag
         shell: bash
         run: |
           set -euo pipefail
           git tag -a "${{ steps.version.outputs.tag }}" "${{ github.event.pull_request.merge_commit_sha }}" -m "${{ steps.version.outputs.tag }}"
           git push origin "refs/tags/${{ steps.version.outputs.tag }}"
+
+      - name: Dispatch release workflow
+        uses: actions/github-script@v8
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'release.yml',
+              ref: 'main',
+              inputs: {
+                tag: '${{ steps.version.outputs.tag }}',
+              },
+            });
