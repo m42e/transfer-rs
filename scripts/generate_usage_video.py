@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import textwrap
 import threading
@@ -36,6 +39,19 @@ TITLE_BAR = "#1f2937"
 TEXT = "#e5e7eb"
 MUTED = "#94a3b8"
 ACCENT = "#22c55e"
+DISPLAY_BASE_URL = "http://127.0.0.1:8080"
+INTRO_LINES = [
+    "transfer-rs usage demo",
+    "upload, download, and delete against a local transfer-compatible server",
+    "",
+    "generated from real CLI output",
+]
+TITLE = "transfer-rs usage demo"
+STATE_PREFIX = "transfer-rs-state:"
+
+
+def log_status(message: str) -> None:
+    print(message, file=sys.stderr, flush=True)
 
 
 @dataclass
@@ -151,10 +167,270 @@ def run_command(command: list[str], cwd: Path, env: dict[str, str]) -> subproces
     )
 
 
+def embedded_state_text(payload: dict[str, str]) -> str:
+    return STATE_PREFIX + json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+
+
+def parse_embedded_state(raw_value: str | None) -> dict[str, str] | None:
+    if raw_value is None or not raw_value.startswith(STATE_PREFIX):
+        return None
+
+    try:
+        payload = json.loads(raw_value[len(STATE_PREFIX) :])
+    except json.JSONDecodeError:
+        return None
+
+    if not isinstance(payload, dict):
+        return None
+
+    return {str(key): str(value) for key, value in payload.items()}
+
+
+def expected_embedded_state(
+    repository_root: Path,
+    gif_output_path: Path,
+    *,
+    preflight_signature: str | None = None,
+    render_signature: str | None = None,
+) -> dict[str, str]:
+    payload = {
+        "version": "1",
+        "gif_output": str(gif_output_path.relative_to(repository_root)),
+    }
+    if preflight_signature is not None:
+        payload["preflight_signature"] = preflight_signature
+    if render_signature is not None:
+        payload["render_signature"] = render_signature
+    return payload
+
+
+def state_matches(actual: dict[str, str] | None, expected: dict[str, str]) -> bool:
+    if actual is None:
+        return False
+    return all(actual.get(key) == value for key, value in expected.items())
+
+
+def read_video_embedded_state(media_path: Path) -> dict[str, str] | None:
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format_tags=comment",
+                "-of",
+                "json",
+                str(media_path),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        return None
+
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return None
+
+    tags = payload.get("format", {}).get("tags", {})
+    comment = tags.get("comment") if isinstance(tags, dict) else None
+    return parse_embedded_state(comment if isinstance(comment, str) else None)
+
+
+def gif_global_color_table_size(data: bytes) -> int:
+    if len(data) < 13 or data[:6] not in {b"GIF87a", b"GIF89a"}:
+        raise ValueError("invalid gif header")
+
+    packed = data[10]
+    if not packed & 0x80:
+        return 0
+
+    return 3 * (2 ** ((packed & 0x07) + 1))
+
+
+def iter_gif_extension_blocks(data: bytes) -> Iterable[tuple[int, bytes]]:
+    index = 13 + gif_global_color_table_size(data)
+    while index < len(data):
+        block_type = data[index]
+        if block_type == 0x3B:
+            return
+
+        if block_type == 0x21:
+            if index + 1 >= len(data):
+                raise ValueError("truncated gif extension label")
+
+            label = data[index + 1]
+            index += 2
+            chunks: list[bytes] = []
+            while True:
+                if index >= len(data):
+                    raise ValueError("truncated gif extension block")
+
+                block_size = data[index]
+                index += 1
+                if block_size == 0:
+                    break
+
+                if index + block_size > len(data):
+                    raise ValueError("truncated gif extension payload")
+
+                chunks.append(data[index : index + block_size])
+                index += block_size
+
+            yield label, b"".join(chunks)
+            continue
+
+        if block_type != 0x2C:
+            raise ValueError("unsupported gif block")
+
+        if index + 10 > len(data):
+            raise ValueError("truncated gif image descriptor")
+
+        packed = data[index + 9]
+        index += 10
+        if packed & 0x80:
+            local_color_table_size = 3 * (2 ** ((packed & 0x07) + 1))
+            if index + local_color_table_size > len(data):
+                raise ValueError("truncated gif local color table")
+            index += local_color_table_size
+
+        if index >= len(data):
+            raise ValueError("truncated gif image data")
+
+        index += 1
+        while True:
+            if index >= len(data):
+                raise ValueError("truncated gif image data block")
+
+            block_size = data[index]
+            index += 1
+            if block_size == 0:
+                break
+
+            if index + block_size > len(data):
+                raise ValueError("truncated gif image data payload")
+            index += block_size
+
+
+def read_gif_embedded_state(media_path: Path) -> dict[str, str] | None:
+    try:
+        data = media_path.read_bytes()
+        for label, payload in iter_gif_extension_blocks(data):
+            if label != 0xFE:
+                continue
+
+            try:
+                raw_value = payload.decode("ascii")
+            except UnicodeDecodeError:
+                continue
+
+            state = parse_embedded_state(raw_value)
+            if state is not None:
+                return state
+    except (OSError, ValueError):
+        return None
+
+    return None
+
+
+def gif_comment_extension(raw_value: str) -> bytes:
+    payload = raw_value.encode("ascii")
+    chunks = [b"\x21\xFE"]
+    for start in range(0, len(payload), 255):
+        chunk = payload[start : start + 255]
+        chunks.append(bytes((len(chunk),)))
+        chunks.append(chunk)
+    chunks.append(b"\x00")
+    return b"".join(chunks)
+
+
+def embed_gif_state(media_path: Path, payload: dict[str, str]) -> None:
+    data = media_path.read_bytes()
+    insertion_offset = 13 + gif_global_color_table_size(data)
+    state_block = gif_comment_extension(embedded_state_text(payload))
+    media_path.write_bytes(data[:insertion_offset] + state_block + data[insertion_offset:])
+
+
+def read_embedded_state(media_path: Path) -> dict[str, str] | None:
+    if media_path.suffix.lower() == ".gif":
+        return read_gif_embedded_state(media_path)
+    return read_video_embedded_state(media_path)
+
+
+def read_shared_embedded_state(output_path: Path, gif_output_path: Path) -> dict[str, str] | None:
+    if not output_path.exists() or not gif_output_path.exists():
+        return None
+
+    output_state = read_embedded_state(output_path)
+    gif_state = read_embedded_state(gif_output_path)
+    if output_state is None or gif_state is None or output_state != gif_state:
+        return None
+
+    return output_state
+
+
+def normalize_demo_text(value: str, actual_base_url: str) -> str:
+    return value.replace(actual_base_url, DISPLAY_BASE_URL)
+
+
+def normalize_demo_lines(lines: Iterable[str], actual_base_url: str) -> list[str]:
+    return [normalize_demo_text(line, actual_base_url) for line in lines]
+
+
+def tracked_input_paths(repository_root: Path) -> list[Path]:
+    paths = [repository_root / "Cargo.toml", repository_root / "Cargo.lock", Path(__file__).resolve()]
+    src_root = repository_root / "src"
+    if src_root.exists():
+        paths.extend(path for path in src_root.rglob("*.rs") if path.is_file())
+    return sorted(paths)
+
+
+def file_digest(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(65536), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def preflight_signature(repository_root: Path) -> str:
+    payload = [
+        {
+            "path": str(path.relative_to(repository_root)),
+            "digest": file_digest(path),
+        }
+        for path in tracked_input_paths(repository_root)
+    ]
+    serialized = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
+def should_regenerate_demo(
+    repository_root: Path,
+    output_path: Path,
+    gif_output_path: Path,
+    preflight_signature_value: str,
+) -> bool:
+    state = read_shared_embedded_state(output_path, gif_output_path)
+    if state is None:
+        return True
+
+    expected = expected_embedded_state(
+        repository_root,
+        gif_output_path,
+        preflight_signature=preflight_signature_value,
+    )
+    return not state_matches(state, expected)
+
+
 def create_demo_steps(repository_root: Path) -> list[DemoStep]:
     ensure_tool("cargo")
     ensure_tool("ffmpeg")
 
+    log_status("building transfer-rs demo binary")
     subprocess.run(["cargo", "build", "--quiet"], cwd=repository_root, check=True)
     binary = repository_root / "target" / "debug" / "transfer-rs"
 
@@ -169,16 +445,19 @@ def create_demo_steps(repository_root: Path) -> list[DemoStep]:
         env = os.environ.copy()
         env["HOME"] = str(home_path)
 
+        log_status("starting local demo server")
         server = DemoServer(("127.0.0.1", 0))
         server_thread = threading.Thread(target=server.serve_forever, daemon=True)
         server_thread.start()
 
         try:
+            log_status("capturing --help output")
             help_result = run_command([str(binary), "--help"], cwd=work_path, env=env)
             help_lines = help_result.stdout.strip().splitlines()
             if len(help_lines) > 13:
                 help_lines = help_lines[:12] + ["..."]
 
+            log_status("capturing upload output")
             upload_result = run_command(
                 [str(binary), "--server", server.base_url, "upload", "source.txt"],
                 cwd=work_path,
@@ -188,10 +467,14 @@ def create_demo_steps(repository_root: Path) -> list[DemoStep]:
             source_file.unlink()
 
             download_url = f"{server.base_url}/source.txt"
+            log_status("capturing download output")
             download_result = run_command([str(binary), "download", download_url], cwd=work_path, env=env)
+            log_status("capturing file contents")
             cat_result = run_command(["cat", "source.txt"], cwd=work_path, env=env)
+            log_status("capturing delete output")
             delete_result = run_command([str(binary), "delete", download_url], cwd=work_path, env=env)
         finally:
+            log_status("stopping local demo server")
             server.shutdown()
             server.server_close()
             server_thread.join(timeout=2)
@@ -199,13 +482,19 @@ def create_demo_steps(repository_root: Path) -> list[DemoStep]:
     return [
         DemoStep("transfer-rs --help", help_lines),
         DemoStep(
-            f"transfer-rs --server {server.base_url} upload source.txt",
-            upload_result.stdout.strip().splitlines(),
+            f"transfer-rs --server {DISPLAY_BASE_URL} upload source.txt",
+            normalize_demo_lines(upload_result.stdout.strip().splitlines(), server.base_url),
         ),
         DemoStep("rm source.txt", []),
-        DemoStep(f"transfer-rs download {download_url}", download_result.stdout.strip().splitlines()),
+        DemoStep(
+            f"transfer-rs download {normalize_demo_text(download_url, server.base_url)}",
+            normalize_demo_lines(download_result.stdout.strip().splitlines(), server.base_url),
+        ),
         DemoStep("cat source.txt", cat_result.stdout.strip().splitlines()),
-        DemoStep(f"transfer-rs delete {download_url}", delete_result.stdout.strip().splitlines()),
+        DemoStep(
+            f"transfer-rs delete {normalize_demo_text(download_url, server.base_url)}",
+            normalize_demo_lines(delete_result.stdout.strip().splitlines(), server.base_url),
+        ),
     ]
 
 
@@ -279,28 +568,159 @@ def run_ffmpeg(command: list[str]) -> None:
     )
 
 
-def render_video(steps: list[DemoStep], output_path: Path, gif_output_path: Path) -> None:
+def replace_if_changed(candidate_path: Path, destination_path: Path) -> None:
+    if destination_path.exists() and destination_path.read_bytes() == candidate_path.read_bytes():
+        candidate_path.unlink()
+        return
+
+    candidate_path.replace(destination_path)
+
+
+def render_signature(steps: list[DemoStep]) -> str:
+    payload = {
+        "intro_lines": INTRO_LINES,
+        "title": TITLE,
+        "fps": FPS,
+        "width": WIDTH,
+        "height": HEIGHT,
+        "padding": PADDING,
+        "window_radius": WINDOW_RADIUS,
+        "content_padding_x": CONTENT_PADDING_X,
+        "content_padding_y": CONTENT_PADDING_Y,
+        "title_bar_height": TITLE_BAR_HEIGHT,
+        "font_size": FONT_SIZE,
+        "line_spacing": LINE_SPACING,
+        "max_columns": MAX_COLUMNS,
+        "max_visible_lines": MAX_VISIBLE_LINES,
+        "prompt": PROMPT,
+        "background": BACKGROUND,
+        "window": WINDOW,
+        "title_bar": TITLE_BAR,
+        "text": TEXT,
+        "muted": MUTED,
+        "accent": ACCENT,
+        "steps": [
+            {
+                "display_command": step.display_command,
+                "output_lines": step.output_lines,
+            }
+            for step in steps
+        ],
+    }
+    serialized = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
+def should_render(
+    steps: list[DemoStep],
+    repository_root: Path,
+    output_path: Path,
+    gif_output_path: Path,
+    preflight_signature_value: str,
+) -> tuple[bool, str]:
+    signature = render_signature(steps)
+    state = read_shared_embedded_state(output_path, gif_output_path)
+
+    if state is None:
+        return True, signature
+
+    expected = expected_embedded_state(
+        repository_root,
+        gif_output_path,
+        preflight_signature=preflight_signature_value,
+        render_signature=signature,
+    )
+    if not state_matches(state, expected):
+        return True, signature
+
+    return False, signature
+
+
+def total_render_frames(steps: list[DemoStep]) -> int:
+    total_frames = FPS * 2
+    for step in steps:
+        total_frames += len(step.display_command)
+        total_frames += max(6, FPS // 4)
+        total_frames += len(wrap_output(step.output_lines)) * max(7, FPS // 5)
+        total_frames += FPS // 2
+    total_frames += FPS * 2
+    return total_frames
+
+
+class RenderProgress:
+    def __init__(self, total_frames: int):
+        self.total_frames = max(total_frames, 1)
+        self.current_frame = 0
+        self.last_reported_frame = -1
+        self.is_tty = sys.stderr.isatty()
+
+    def advance(self) -> None:
+        self.current_frame = min(self.total_frames, self.current_frame + 1)
+        self.report()
+
+    def report(self, *, force: bool = False) -> None:
+        if not force:
+            if self.is_tty and self.current_frame == self.last_reported_frame:
+                return
+            if not self.is_tty and self.current_frame < self.total_frames:
+                if self.current_frame % 10 != 0 and self.current_frame != 1:
+                    return
+
+        percent = (self.current_frame / self.total_frames) * 100
+        message = f"rendering frames: {self.current_frame}/{self.total_frames} ({percent:5.1f}%)"
+        if self.is_tty:
+            print(f"\r{message}", end="", file=sys.stderr, flush=True)
+            if self.current_frame >= self.total_frames:
+                print(file=sys.stderr, flush=True)
+        else:
+            print(message, file=sys.stderr, flush=True)
+
+        self.last_reported_frame = self.current_frame
+
+
+def render_video(
+    steps: list[DemoStep],
+    repository_root: Path,
+    output_path: Path,
+    gif_output_path: Path,
+    preflight_signature_value: str,
+) -> None:
     font = load_font(FONT_SIZE)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     gif_output_path.parent.mkdir(parents=True, exist_ok=True)
 
+    should_render_assets, signature = should_render(
+        steps,
+        repository_root,
+        output_path,
+        gif_output_path,
+        preflight_signature_value,
+    )
+    if not should_render_assets:
+        log_status("usage demo assets are up to date; skipping render")
+        return
+
+    embedded_state = expected_embedded_state(
+        repository_root,
+        gif_output_path,
+        preflight_signature=preflight_signature_value,
+        render_signature=signature,
+    )
+
     with tempfile.TemporaryDirectory(prefix="transfer-rs-video-frames-") as frames_dir:
         frames_path = Path(frames_dir)
         frame_index = 0
+        progress = RenderProgress(total_render_frames(steps))
 
         def write_repeated(lines: list[str], count: int) -> None:
             nonlocal frame_index
             for _ in range(count):
                 frame_file = frames_path / f"frame_{frame_index:05d}.png"
-                draw_frame(lines, "transfer-rs usage demo", frame_file, font)
+                draw_frame(lines, TITLE, frame_file, font)
                 frame_index += 1
+                progress.advance()
 
-        write_repeated([
-            "transfer-rs usage demo",
-            "upload, download, and delete against a local transfer-compatible server",
-            "",
-            "generated from real CLI output",
-        ], FPS * 2)
+        write_repeated(INTRO_LINES, FPS * 2)
 
         transcript: list[str] = []
         for step in steps:
@@ -324,7 +744,10 @@ def render_video(steps: list[DemoStep], output_path: Path, gif_output_path: Path
 
         input_pattern = str(frames_path / "frame_%05d.png")
         palette_path = frames_path / "palette.png"
+        candidate_output_path = frames_path / output_path.name
+        candidate_gif_output_path = frames_path / gif_output_path.name
 
+        log_status("encoding mp4")
         run_ffmpeg(
             [
                 "ffmpeg",
@@ -333,12 +756,15 @@ def render_video(steps: list[DemoStep], output_path: Path, gif_output_path: Path
                 str(FPS),
                 "-i",
                 input_pattern,
+                "-metadata",
+                f"comment={embedded_state_text(embedded_state)}",
                 "-vf",
                 "format=yuv420p",
-                str(output_path),
+                str(candidate_output_path),
             ],
         )
 
+        log_status("encoding gif palette")
         run_ffmpeg(
             [
                 "ffmpeg",
@@ -353,6 +779,7 @@ def render_video(steps: list[DemoStep], output_path: Path, gif_output_path: Path
             ]
         )
 
+        log_status("encoding gif")
         run_ffmpeg(
             [
                 "ffmpeg",
@@ -365,9 +792,14 @@ def render_video(steps: list[DemoStep], output_path: Path, gif_output_path: Path
                 str(palette_path),
                 "-lavfi",
                 f"fps=15,scale={WIDTH}:-1:flags=lanczos[x];[x][1:v]paletteuse",
-                str(gif_output_path),
+                str(candidate_gif_output_path),
             ]
         )
+        embed_gif_state(candidate_gif_output_path, embedded_state)
+
+        log_status("updating output files")
+        replace_if_changed(candidate_output_path, output_path)
+        replace_if_changed(candidate_gif_output_path, gif_output_path)
 
 
 def main() -> None:
@@ -375,8 +807,20 @@ def main() -> None:
     repository_root = repo_root()
     output_path = repository_root / args.output
     gif_output_path = repository_root / args.gif_output if args.gif_output else output_path.with_suffix(".gif")
+
+    ensure_tool("ffprobe")
+    preflight_signature_value = preflight_signature(repository_root)
+
+    log_status("checking demo inputs")
+    if not should_regenerate_demo(repository_root, output_path, gif_output_path, preflight_signature_value):
+        log_status("usage demo inputs unchanged; skipping demo step generation")
+        print(output_path.relative_to(repository_root))
+        print(gif_output_path.relative_to(repository_root))
+        return
+
+    log_status("generating demo transcript")
     steps = create_demo_steps(repository_root)
-    render_video(steps, output_path, gif_output_path)
+    render_video(steps, repository_root, output_path, gif_output_path, preflight_signature_value)
     print(output_path.relative_to(repository_root))
     print(gif_output_path.relative_to(repository_root))
 
