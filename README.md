@@ -141,14 +141,21 @@ transfer-rs --version
 
 GitHub Actions builds the project on Linux, Windows, and macOS for pushes to `main` and pull requests.
 
-To publish a release, push a semver tag that matches `Cargo.toml`:
+To prepare a release in GitHub Actions, run the manual `Prepare Release PR` workflow and provide the next version number without the leading `v`.
+
+The workflow updates `Cargo.toml` and `Cargo.lock`, regenerates `demo/usage-demo.mp4` and `demo/usage-demo.gif`, generates `release-notes/vX.Y.Z.md`, uploads those files as workflow artifacts, and opens a `chore(release): prepare vX.Y.Z` pull request for review.
+
+After you review the generated release notes and demo in that PR, merge it into `main`. A follow-up workflow tags the merged commit as `vX.Y.Z`, and the release workflow publishes the GitHub release from that reviewed tag using the checked-in `release-notes/vX.Y.Z.md` file when present.
+
+If you want the same flow locally, run:
 
 ```bash
-git tag v1.0.0
-git push origin v1.0.0
+./scripts/release.sh 1.0.1
 ```
 
-The release workflow builds release archives for Linux, Windows, and macOS, then generates GitHub release notes from Conventional Commit summaries before publishing the tag's GitHub release.
+The script requires a clean repository, updates `Cargo.toml` and `Cargo.lock`, regenerates `demo/usage-demo.mp4` and `demo/usage-demo.gif`, creates a `chore(release): cut vX.Y.Z` commit, and creates an annotated `vX.Y.Z` tag. Push the commit and tag separately when ready.
+
+The release workflow builds release archives for Linux, Windows, and macOS, then publishes the tagged GitHub release.
 
 ## Encryption Modes
 

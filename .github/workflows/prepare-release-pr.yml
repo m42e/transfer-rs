@@ -1,0 +1,158 @@
+name: Prepare Release PR
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version without the leading v
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  prepare:
+    name: Prepare Release PR
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Validate requested version
+        env:
+          VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          semver_regex='^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'
+          if [[ ! "$VERSION" =~ $semver_regex ]]; then
+            echo "Version must be semver-like, for example 1.2.3 or 1.2.3-rc.1" >&2
+            exit 1
+          fi
+
+          tag="v$VERSION"
+          if git rev-parse --verify --quiet "refs/tags/$tag" >/dev/null; then
+            echo "Tag already exists: $tag" >&2
+            exit 1
+          fi
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install demo generation dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip pillow
+          ffmpeg -version >/dev/null
+
+      - name: Update crate version
+        env:
+          VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python <<'PY'
+          from pathlib import Path
+          import os
+          import re
+
+          new_version = os.environ["VERSION"]
+
+          cargo_toml = Path("Cargo.toml")
+          toml_content = cargo_toml.read_text(encoding="utf-8")
+          toml_pattern = re.compile(r"(?ms)^(\[package\]\n.*?^version = \")([^\"]+)(\"$)")
+          toml_match = toml_pattern.search(toml_content)
+          if toml_match is None:
+              raise SystemExit("failed to find package version in Cargo.toml")
+          old_version = toml_match.group(2)
+          if old_version == new_version:
+              raise SystemExit(f"Cargo.toml is already at version {new_version}")
+          toml_content = toml_pattern.sub(
+              lambda match: f"{match.group(1)}{new_version}{match.group(3)}",
+              toml_content,
+              count=1,
+          )
+          cargo_toml.write_text(toml_content, encoding="utf-8")
+
+          cargo_lock = Path("Cargo.lock")
+          lock_content = cargo_lock.read_text(encoding="utf-8")
+          lock_pattern = re.compile(
+              r'(?ms)^(\[\[package\]\]\nname = "transfer-rs"\nversion = ")([^"]+)("$)'
+          )
+          if lock_pattern.search(lock_content) is None:
+              raise SystemExit("failed to find root package version in Cargo.lock")
+          lock_content = lock_pattern.sub(
+              lambda match: f'{match.group(1)}{new_version}{match.group(3)}',
+              lock_content,
+              count=1,
+          )
+          cargo_lock.write_text(lock_content, encoding="utf-8")
+          PY
+
+      - name: Regenerate demo media
+        run: python scripts/generate_usage_video.py
+
+      - name: Create release notes directory
+        run: mkdir -p release-notes
+
+      - name: Generate release notes preview
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: .github/cliff.toml
+          args: --unreleased --tag v${{ inputs.version }}
+        env:
+          OUTPUT: release-notes/v${{ inputs.version }}.md
+
+      - name: Upload release preview artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-preview-v${{ inputs.version }}
+          path: |
+            demo/usage-demo.mp4
+            demo/usage-demo.gif
+            release-notes/v${{ inputs.version }}.md
+          if-no-files-found: error
+
+      - name: Create release pull request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: release/v${{ inputs.version }}
+          delete-branch: true
+          commit-message: "chore(release): prepare v${{ inputs.version }}"
+          title: "chore(release): prepare v${{ inputs.version }}"
+          body: |
+            ## Release Review
+            - Review release notes in `release-notes/v${{ inputs.version }}.md`
+            - Review the regenerated demo in `demo/usage-demo.gif` and `demo/usage-demo.mp4`
+            - Merge this pull request to create tag `v${{ inputs.version }}` and publish the GitHub release
+
+            ## Included Changes
+            - Updated the crate version to `${{ inputs.version }}`
+            - Regenerated the checked-in demo assets
+            - Generated a reviewable release-notes file from unreleased Conventional Commits
+          labels: release
+          add-paths: |
+            Cargo.toml
+            Cargo.lock
+            demo/usage-demo.mp4
+            demo/usage-demo.gif
+            release-notes/v${{ inputs.version }}.md

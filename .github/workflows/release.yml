@@ -102,6 +102,20 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Resolve release notes source
+        id: release-notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          candidate="release-notes/${GITHUB_REF_NAME}.md"
+          if [[ -f "$candidate" ]]; then
+            echo "body_path=$candidate" >> "$GITHUB_OUTPUT"
+            echo "use_checked_in=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "body_path=release-notes.md" >> "$GITHUB_OUTPUT"
+            echo "use_checked_in=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Download packaged artifacts
         uses: actions/download-artifact@v5
         with:
@@ -110,6 +124,7 @@ jobs:
           merge-multiple: true
 
       - name: Generate release notes
+        if: steps.release-notes.outputs.use_checked_in == 'false'
         id: git-cliff
         uses: orhun/git-cliff-action@v4
         with:
@@ -121,7 +136,7 @@ jobs:
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          body_path: release-notes.md
+          body_path: ${{ steps.release-notes.outputs.body_path }}
           files: dist/*
           fail_on_unmatched_files: true
           preserve_order: true
