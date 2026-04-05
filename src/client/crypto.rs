@@ -15,7 +15,7 @@ pub struct PreparedUpload {
     pub remote_name: String,
     pub mode: EncryptionMode,
     upload_path: PathBuf,
-    _temp_file: Option<NamedTempFile>,
+    _temp_files: Vec<NamedTempFile>,
 }
 
 impl PreparedUpload {
@@ -24,7 +24,16 @@ impl PreparedUpload {
             remote_name,
             mode: EncryptionMode::None,
             upload_path: path,
-            _temp_file: None,
+            _temp_files: Vec::new(),
+        }
+    }
+
+    pub fn plain_with_temp(path: PathBuf, remote_name: String, temp_file: NamedTempFile) -> Self {
+        Self {
+            remote_name,
+            mode: EncryptionMode::None,
+            upload_path: path,
+            _temp_files: vec![temp_file],
         }
     }
 
@@ -48,7 +57,7 @@ pub fn prepare_passphrase_upload(
         remote_name: format!("{remote_name}.age"),
         mode: EncryptionMode::Passphrase,
         upload_path: temp.path().to_path_buf(),
-        _temp_file: Some(temp),
+        _temp_files: vec![temp],
     })
 }
 
@@ -63,7 +72,7 @@ pub fn prepare_identity_upload(
         remote_name: format!("{remote_name}.age"),
         mode: EncryptionMode::Identity,
         upload_path: temp.path().to_path_buf(),
-        _temp_file: Some(temp),
+        _temp_files: vec![temp],
     })
 }
 

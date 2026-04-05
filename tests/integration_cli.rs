@@ -164,7 +164,46 @@ fn plain_upload_download_delete_flow_via_binary() -> Result<()> {
 
 #[test]
 #[serial]
-fn upload_rejects_non_file_input() -> Result<()> {
+fn upload_packs_directory_input_before_uploading() -> Result<()> {
+    let home = tempdir()?;
+    let workdir = tempdir()?;
+    let source = workdir.path().join("bundle");
+    let nested = source.join("nested");
+    std::fs::create_dir_all(&nested)?;
+    std::fs::write(source.join("top.txt"), "top")?;
+    std::fs::write(nested.join("child.txt"), "child")?;
+
+    let mut server = Server::new();
+    let download_url = format!("{}/bundle.tar.gz", server.url());
+    let delete_url = format!("{}/delete/bundle.tar.gz", server.url());
+    let upload_mock = server
+        .mock("PUT", "/bundle.tar.gz")
+        .with_status(200)
+        .with_header("x-url-delete", &delete_url)
+        .with_body(format!("{download_url}\n"))
+        .create();
+
+    let mut command = Command::new(binary_path());
+    command
+        .env("HOME", home.path())
+        .current_dir(workdir.path())
+        .args([
+            "--server",
+            &server.url(),
+            "upload",
+            source.to_str().context("source dir path")?,
+        ]);
+    command
+        .assert()
+        .success()
+        .stdout(contains("Uploaded: bundle.tar.gz").and(contains(&download_url)));
+    upload_mock.assert();
+    Ok(())
+}
+
+#[test]
+#[serial]
+fn upload_rejects_missing_input() -> Result<()> {
     let home = tempdir()?;
     let workdir = tempdir()?;
 
@@ -172,11 +211,11 @@ fn upload_rejects_non_file_input() -> Result<()> {
     command
         .env("HOME", home.path())
         .current_dir(workdir.path())
-        .args(["upload", workdir.path().to_str().context("workdir path")?]);
+        .args(["upload", "missing-path"]);
     command
         .assert()
         .failure()
-        .stderr(contains("input path is not a file"));
+        .stderr(contains("input path does not exist"));
     Ok(())
 }
 
