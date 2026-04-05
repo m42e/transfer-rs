@@ -6,7 +6,7 @@ The default server is `https://transfer.sh`, and you can override it globally wi
 
 ## Demo
 
-![demo/usage-demo.mp4](demo/usage-demo.mp4).
+![Demo](demo/usage-demo.gif)
 
 ## Features
 
@@ -148,7 +148,7 @@ git tag v1.0.0
 git push origin v1.0.0
 ```
 
-The release workflow builds release archives for Linux, Windows, and macOS and uploads them to the GitHub release associated with that tag.
+The release workflow builds release archives for Linux, Windows, and macOS, then generates GitHub release notes from Conventional Commit summaries before publishing the tag's GitHub release.
 
 ## Encryption Modes
 
