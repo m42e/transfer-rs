@@ -33,6 +33,8 @@ jobs:
 
       - name: Cache Cargo artifacts
         uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
 
       - name: Verify application version flag
         run: cargo run --locked -- --version
