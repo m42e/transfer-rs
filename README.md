@@ -42,7 +42,6 @@ Install `pre-commit` with `pre-commit-uv` so hook environments are managed by `u
 ```bash
 uv tool install pre-commit --with pre-commit-uv --force-reinstall
 pre-commit install
-pre-commit install --hook-type pre-push
 ```
 
 Run the full hook set on demand with:
