@@ -6,9 +6,7 @@ The default server is `https://transfer.sh`, and you can override it globally wi
 
 ## Demo
 
-A generated usage recording is available at [demo/usage-demo.mp4](demo/usage-demo.mp4).
-
-To regenerate it from current CLI behavior, run [scripts/generate_usage_video.py](scripts/generate_usage_video.py).
+![demo/usage-demo.mp4](demo/usage-demo.mp4).
 
 ## Features
 
