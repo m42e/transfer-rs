@@ -116,8 +116,10 @@ mod tests {
     use crate::model::EncryptionMode;
     use crate::storage::paths::AppPaths;
     use anyhow::Result;
-    use std::os::unix::ffi::OsStringExt;
     use tempfile::{TempDir, tempdir};
+
+    #[cfg(unix)]
+    use std::os::unix::ffi::OsStringExt;
 
     fn test_paths() -> Result<(TempDir, AppPaths)> {
         let root = tempdir()?;
@@ -221,6 +223,7 @@ mod tests {
         Ok(())
     }
 
+    #[cfg(unix)]
     #[test]
     fn file_name_rejects_non_unicode_names() {
         let os_string = std::ffi::OsString::from_vec(vec![0x66, 0x6f, 0x80]);
