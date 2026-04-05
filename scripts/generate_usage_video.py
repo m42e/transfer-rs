@@ -48,6 +48,9 @@ INTRO_LINES = [
 ]
 TITLE = "transfer-rs usage demo"
 STATE_PREFIX = "transfer-rs-state:"
+BUNDLED_FONT_PATHS = [
+    Path("demo/fonts/IBMPlexMono-Regular.ttf"),
+]
 
 
 def log_status(message: str) -> None:
@@ -138,8 +141,12 @@ def repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
-def load_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+def load_font(repository_root: Path, size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     candidates = [
+        str(repository_root / candidate)
+        for candidate in BUNDLED_FONT_PATHS
+        if (repository_root / candidate).exists()
+    ] + [
         "/System/Library/Fonts/SFNSMono.ttf",
         "/System/Library/Fonts/Supplemental/Menlo.ttc",
         "/Library/Fonts/Menlo.ttc",
@@ -382,6 +389,7 @@ def normalize_demo_lines(lines: Iterable[str], actual_base_url: str) -> list[str
 
 def tracked_input_paths(repository_root: Path) -> list[Path]:
     paths = [repository_root / "Cargo.toml", repository_root / "Cargo.lock", Path(__file__).resolve()]
+    paths.extend(repository_root / candidate for candidate in BUNDLED_FONT_PATHS if (repository_root / candidate).exists())
     src_root = repository_root / "src"
     if src_root.exists():
         paths.extend(path for path in src_root.rglob("*.rs") if path.is_file())
@@ -685,7 +693,7 @@ def render_video(
     gif_output_path: Path,
     preflight_signature_value: str,
 ) -> None:
-    font = load_font(FONT_SIZE)
+    font = load_font(repository_root, FONT_SIZE)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     gif_output_path.parent.mkdir(parents=True, exist_ok=True)
 

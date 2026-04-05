@@ -10,7 +10,7 @@ The default server is `https://transfer.sh`, and you can override it globally wi
 
 ## Features
 
-- Upload files to a transfer.sh-compatible server.
+- Upload files or complete directories to a transfer.sh-compatible server.
 - Download files by URL, with automatic filename inference.
 - Delete remote uploads later using a stored record ID or download URL.
 - Browse upload history in a terminal UI.
@@ -68,6 +68,12 @@ Upload a file:
 
 ```bash
 transfer-rs upload ./report.pdf
+```
+
+Upload a complete directory. The client packs it into a `.tar.gz` archive before uploading:
+
+```bash
+transfer-rs upload ./release-assets
 ```
 
 Upload with a custom remote name and transfer limits:
@@ -146,6 +152,8 @@ To prepare a release in GitHub Actions, run the manual `Prepare Release PR` work
 Repository Settings > Actions > General must use `Read and write permissions` and enable `Allow GitHub Actions to create and approve pull requests`, or the workflow will stop before opening the release PR.
 
 The workflow updates `Cargo.toml` and `Cargo.lock`, regenerates `demo/usage-demo.mp4` and `demo/usage-demo.gif`, generates `release-notes/vX.Y.Z.md`, uploads those files as workflow artifacts, and opens a `chore(release): prepare vX.Y.Z` pull request for review.
+
+Demo rendering uses the vendored open-source IBM Plex Mono font in `demo/fonts` so the generated media stays consistent across local runs and GitHub Actions.
 
 After you review the generated release notes and demo in that PR, merge it into `main`. A follow-up workflow tags the merged commit as `vX.Y.Z`, and the release workflow publishes the GitHub release from that reviewed tag using the checked-in `release-notes/vX.Y.Z.md` file when present.
 
