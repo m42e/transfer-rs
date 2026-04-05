@@ -2,7 +2,13 @@
 
 transfer-rs is a Rust CLI for transfer.sh-compatible file sharing servers. It supports uploads, downloads, remote deletion, a local SQLite-backed history view, and optional end-to-end encryption using age passphrases or a locally generated age identity.
 
-The default server is `https://transfer.pb42.de`, and you can override it globally with `--server` or persist a different default in the generated config file.
+The default server is `https://transfer.sh`, and you can override it globally with `--server` or persist a different default in the generated config file.
+
+## Demo
+
+A generated usage recording is available at [demo/usage-demo.mp4](demo/usage-demo.mp4).
+
+To regenerate it from current CLI behavior, run [scripts/generate_usage_video.py](scripts/generate_usage_video.py).
 
 ## Features
 
@@ -28,6 +34,24 @@ cargo test --lib --bins --locked
 cargo run -- --help
 cargo run -- --version
 ```
+
+## Pre-commit Hooks
+
+Install `pre-commit` with `pre-commit-uv` so hook environments are managed by `uv`:
+
+```bash
+uv tool install pre-commit --with pre-commit-uv --force-reinstall
+pre-commit install
+pre-commit install --hook-type pre-push
+```
+
+Run the full hook set on demand with:
+
+```bash
+pre-commit run --all-files
+```
+
+The repository hook set includes basic file hygiene checks plus `cargo fmt --all -- --check`, `cargo clippy --locked --all-targets --all-features -- -D warnings`, and `cargo test --locked --lib --bins`.
 
 To install the binary into your Cargo bin directory from the current checkout:
 
@@ -148,7 +172,7 @@ transfer-rs creates platform-specific application directories through the `direc
 The initial config file is created automatically with this default content:
 
 ```toml
-server_url = "https://transfer.pb42.de"
+server_url = "https://transfer.sh"
 ```
 
 Protect the generated identity key like any other private key. Anyone who obtains it can decrypt files encrypted for that identity.
