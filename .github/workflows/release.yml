@@ -12,8 +12,8 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  release:
-    name: Release (${{ matrix.target }})
+  build:
+    name: Build Release (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -51,6 +51,10 @@ jobs:
 
       - name: Cache Cargo artifacts
         uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+          workspaces: ". -> target/${{ matrix.target }}"
+          cache-on-failure: true
 
       - name: Verify tag matches crate version
         shell: bash
@@ -78,8 +82,46 @@ jobs:
         shell: pwsh
         run: Compress-Archive -Path "target/${{ matrix.target }}/release/${{ matrix.binary }}" -DestinationPath "${{ matrix.archive }}"
 
-      - name: Upload release asset
+      - name: Upload packaged artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.target }}
+          path: ${{ matrix.archive }}
+          if-no-files-found: error
+
+  publish:
+    name: Publish Release
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Download packaged artifacts
+        uses: actions/download-artifact@v5
+        with:
+          path: dist
+          pattern: release-*
+          merge-multiple: true
+
+      - name: Generate release notes
+        id: git-cliff
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: .github/cliff.toml
+          args: --latest
+        env:
+          OUTPUT: release-notes.md
+
+      - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ matrix.archive }}
+          body_path: release-notes.md
+          files: dist/*
           fail_on_unmatched_files: true
+          preserve_order: true
