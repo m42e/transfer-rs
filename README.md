@@ -23,9 +23,10 @@ The default server is `https://transfer.pb42.de`, and you can override it global
 ## Build And Run
 
 ```bash
-cargo build
-cargo test
+cargo build --release --locked
+cargo test --lib --bins --locked
 cargo run -- --help
+cargo run -- --version
 ```
 
 To install the binary into your Cargo bin directory from the current checkout:
@@ -108,6 +109,25 @@ Override the configured server for any command:
 ```bash
 transfer-rs --server https://transfer.example.com upload ./report.pdf
 ```
+
+Show the application version:
+
+```bash
+transfer-rs --version
+```
+
+## CI And Releases
+
+GitHub Actions builds the project on Linux, Windows, and macOS for pushes to `main` and pull requests.
+
+To publish a release, push a semver tag that matches `Cargo.toml`:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+The release workflow builds release archives for Linux, Windows, and macOS and uploads them to the GitHub release associated with that tag.
 
 ## Encryption Modes
 

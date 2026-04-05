@@ -398,3 +398,14 @@ fn binary_help_smoke_test() -> Result<()> {
         .stdout(contains("CLI client for transfer.sh-compatible instances").and(contains("upload")).and(contains("history")));
     Ok(())
 }
+
+#[test]
+fn binary_version_reports_package_version() -> Result<()> {
+    let mut command = Command::new(binary_path());
+    command.arg("--version");
+    command
+        .assert()
+        .success()
+        .stdout(contains(env!("CARGO_PKG_VERSION")));
+    Ok(())
+}

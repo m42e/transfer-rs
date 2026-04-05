@@ -86,12 +86,13 @@ impl HistoryApp {
             Constraint::Length(12),
             Constraint::Length(10),
         ];
+        let title = format!("transfer-rs v{} history", crate::APP_VERSION);
         let table = Table::new(rows, widths)
             .header(
                 Row::new(vec!["Name", "Uploaded", "Size", "Encryption", "State"])
                     .style(Style::default().add_modifier(Modifier::BOLD)),
             )
-            .block(Block::default().title("transfer-rs history").borders(Borders::ALL))
+            .block(Block::default().title(title).borders(Borders::ALL))
             .row_highlight_style(Style::default().add_modifier(Modifier::REVERSED));
 
         frame.render_stateful_widget(table, layout[0], &mut self.table_state);
@@ -437,7 +438,7 @@ mod tests {
             .map(|cell| cell.symbol())
             .collect::<String>();
 
-        assert!(rendered.contains("transfer-rs history"));
+        assert!(rendered.contains(&format!("transfer-rs v{} history", crate::APP_VERSION)));
         assert!(rendered.contains("Status"));
         assert!(rendered.contains("one.txt"));
         Ok(())
