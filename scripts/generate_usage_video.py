@@ -105,11 +105,15 @@ class DemoHandler(BaseHTTPRequestHandler):
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Generate a terminal-style usage demo video for transfer-rs.")
+    parser = argparse.ArgumentParser(description="Generate terminal-style usage demo media for transfer-rs.")
     parser.add_argument(
         "--output",
         default="demo/usage-demo.mp4",
         help="Output path for the generated MP4, relative to the repository root.",
+    )
+    parser.add_argument(
+        "--gif-output",
+        help="Optional output path for the generated GIF, relative to the repository root. Defaults to the MP4 path with a .gif suffix.",
     )
     return parser.parse_args()
 
@@ -266,9 +270,19 @@ def draw_frame(lines: list[str], title: str, frame_path: Path, font: ImageFont.I
     image.save(frame_path)
 
 
-def render_video(steps: list[DemoStep], output_path: Path) -> None:
+def run_ffmpeg(command: list[str]) -> None:
+    subprocess.run(
+        command,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
+def render_video(steps: list[DemoStep], output_path: Path, gif_output_path: Path) -> None:
     font = load_font(FONT_SIZE)
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    gif_output_path.parent.mkdir(parents=True, exist_ok=True)
 
     with tempfile.TemporaryDirectory(prefix="transfer-rs-video-frames-") as frames_dir:
         frames_path = Path(frames_dir)
@@ -308,21 +322,51 @@ def render_video(steps: list[DemoStep], output_path: Path) -> None:
 
         write_repeated(transcript + ["", "demo complete"], FPS * 2)
 
-        subprocess.run(
+        input_pattern = str(frames_path / "frame_%05d.png")
+        palette_path = frames_path / "palette.png"
+
+        run_ffmpeg(
             [
                 "ffmpeg",
                 "-y",
                 "-framerate",
                 str(FPS),
                 "-i",
-                str(frames_path / "frame_%05d.png"),
+                input_pattern,
                 "-vf",
                 "format=yuv420p",
                 str(output_path),
             ],
-            check=True,
-            capture_output=True,
-            text=True,
+        )
+
+        run_ffmpeg(
+            [
+                "ffmpeg",
+                "-y",
+                "-framerate",
+                str(FPS),
+                "-i",
+                input_pattern,
+                "-vf",
+                f"fps=15,scale={WIDTH}:-1:flags=lanczos,palettegen",
+                str(palette_path),
+            ]
+        )
+
+        run_ffmpeg(
+            [
+                "ffmpeg",
+                "-y",
+                "-framerate",
+                str(FPS),
+                "-i",
+                input_pattern,
+                "-i",
+                str(palette_path),
+                "-lavfi",
+                f"fps=15,scale={WIDTH}:-1:flags=lanczos[x];[x][1:v]paletteuse",
+                str(gif_output_path),
+            ]
         )
 
 
@@ -330,9 +374,11 @@ def main() -> None:
     args = parse_args()
     repository_root = repo_root()
     output_path = repository_root / args.output
+    gif_output_path = repository_root / args.gif_output if args.gif_output else output_path.with_suffix(".gif")
     steps = create_demo_steps(repository_root)
-    render_video(steps, output_path)
+    render_video(steps, output_path, gif_output_path)
     print(output_path.relative_to(repository_root))
+    print(gif_output_path.relative_to(repository_root))
 
 
 if __name__ == "__main__":
