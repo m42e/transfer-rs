@@ -10,7 +10,10 @@ use crate::storage::paths::AppPaths;
 use crate::tui::history::HistoryApp;
 
 pub async fn run(server_override: Option<String>, args: HistoryArgs) -> Result<()> {
-    run_with(server_override, args, HistoryApp::new, |app| Box::pin(app.run())).await
+    run_with(server_override, args, HistoryApp::new, |app| {
+        Box::pin(app.run())
+    })
+    .await
 }
 
 async fn run_with<App, Build, Run>(

@@ -103,7 +103,10 @@ mod tests {
             server_url: "https://stored.invalid".to_owned(),
         };
 
-        assert_eq!(config.resolve_server_url(Some("https://override.invalid")), "https://override.invalid");
+        assert_eq!(
+            config.resolve_server_url(Some("https://override.invalid")),
+            "https://override.invalid"
+        );
         assert_eq!(config.resolve_server_url(None), "https://stored.invalid");
     }
 }

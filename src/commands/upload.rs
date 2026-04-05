@@ -97,7 +97,9 @@ where
             let passphrase = prompt_passphrase("Upload passphrase")?;
             crypto::prepare_passphrase_upload(&args.file, &remote_name, passphrase)
         }
-        EncryptionMode::Identity => crypto::prepare_identity_upload(&args.file, &remote_name, paths),
+        EncryptionMode::Identity => {
+            crypto::prepare_identity_upload(&args.file, &remote_name, paths)
+        }
     }
 }
 
@@ -140,8 +142,14 @@ mod tests {
     #[test]
     fn select_encryption_mode_prefers_requested_mode() {
         assert_eq!(select_encryption_mode(false, false), EncryptionMode::None);
-        assert_eq!(select_encryption_mode(true, false), EncryptionMode::Passphrase);
-        assert_eq!(select_encryption_mode(false, true), EncryptionMode::Identity);
+        assert_eq!(
+            select_encryption_mode(true, false),
+            EncryptionMode::Passphrase
+        );
+        assert_eq!(
+            select_encryption_mode(false, true),
+            EncryptionMode::Identity
+        );
     }
 
     #[test]

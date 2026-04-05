@@ -61,9 +61,18 @@ mod tests {
         assert_eq!(EncryptionMode::None.as_str(), "none");
         assert_eq!(EncryptionMode::Passphrase.as_str(), "passphrase");
         assert_eq!(EncryptionMode::Identity.as_str(), "identity");
-        assert_eq!(EncryptionMode::from_db("passphrase"), EncryptionMode::Passphrase);
-        assert_eq!(EncryptionMode::from_db("identity"), EncryptionMode::Identity);
-        assert_eq!(EncryptionMode::from_db("anything-else"), EncryptionMode::None);
+        assert_eq!(
+            EncryptionMode::from_db("passphrase"),
+            EncryptionMode::Passphrase
+        );
+        assert_eq!(
+            EncryptionMode::from_db("identity"),
+            EncryptionMode::Identity
+        );
+        assert_eq!(
+            EncryptionMode::from_db("anything-else"),
+            EncryptionMode::None
+        );
         assert!(!EncryptionMode::None.is_encrypted());
         assert!(EncryptionMode::Passphrase.is_encrypted());
         assert!(EncryptionMode::Identity.is_encrypted());
@@ -87,7 +96,8 @@ mod tests {
         };
 
         let encoded = serde_json::to_string(&record).expect("serialize upload record");
-        let decoded: UploadRecord = serde_json::from_str(&encoded).expect("deserialize upload record");
+        let decoded: UploadRecord =
+            serde_json::from_str(&encoded).expect("deserialize upload record");
 
         assert_eq!(decoded.id, record.id);
         assert_eq!(decoded.original_name, record.original_name);

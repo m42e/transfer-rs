@@ -63,7 +63,10 @@ impl TransferClient {
             request = request.header("Max-Downloads", downloads.to_string());
         }
 
-        let response = request.send().await.context("failed to contact transfer server")?;
+        let response = request
+            .send()
+            .await
+            .context("failed to contact transfer server")?;
         let status = response.status();
         let delete_url = response
             .headers()
@@ -72,7 +75,10 @@ impl TransferClient {
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(ToOwned::to_owned);
-        let body = response.text().await.context("failed to read upload response")?;
+        let body = response
+            .text()
+            .await
+            .context("failed to read upload response")?;
 
         if !status.is_success() {
             bail!("upload failed with status {status}: {}", body.trim());
@@ -154,7 +160,10 @@ mod tests {
             .match_header("max-downloads", "2")
             .match_body(Matcher::Exact("payload".to_owned()))
             .with_status(200)
-            .with_header("x-url-delete", &format!("{}/delete/remote.txt", server.url()))
+            .with_header(
+                "x-url-delete",
+                &format!("{}/delete/remote.txt", server.url()),
+            )
             .with_body(format!("{}/remote.txt\n", server.url()))
             .create_async()
             .await;
@@ -166,8 +175,14 @@ mod tests {
 
         mock.assert_async().await;
         assert_eq!(response.remote_name, "remote.txt");
-        assert_eq!(response.download_url, format!("{}/remote.txt", server.url()));
-        assert_eq!(response.delete_url, format!("{}/delete/remote.txt", server.url()));
+        assert_eq!(
+            response.download_url,
+            format!("{}/remote.txt", server.url())
+        );
+        assert_eq!(
+            response.delete_url,
+            format!("{}/delete/remote.txt", server.url())
+        );
         Ok(())
     }
 
@@ -185,7 +200,9 @@ mod tests {
             .await;
 
         let client = TransferClient::new(&server.url())?;
-        let result = client.upload_file(&file_path, "remote.txt", None, None).await;
+        let result = client
+            .upload_file(&file_path, "remote.txt", None, None)
+            .await;
         assert!(result.is_err());
         let error = result.err().expect("missing delete header should fail");
 
@@ -207,11 +224,17 @@ mod tests {
             .await;
 
         let client = TransferClient::new(&server.url())?;
-        let result = client.upload_file(&file_path, "remote.txt", None, None).await;
+        let result = client
+            .upload_file(&file_path, "remote.txt", None, None)
+            .await;
         assert!(result.is_err());
         let error = result.err().expect("server failure should fail upload");
 
-        assert!(error.to_string().contains("upload failed with status 500 Internal Server Error"));
+        assert!(
+            error
+                .to_string()
+                .contains("upload failed with status 500 Internal Server Error")
+        );
         Ok(())
     }
 
@@ -222,11 +245,19 @@ mod tests {
         let file_path = temp.path().join("upload.txt");
         std::fs::write(&file_path, b"payload")?;
 
-        let result = client.upload_file(&file_path, "remote.txt", None, None).await;
+        let result = client
+            .upload_file(&file_path, "remote.txt", None, None)
+            .await;
         assert!(result.is_err());
-        let error = result.err().expect("mailto URLs cannot accept path segments");
+        let error = result
+            .err()
+            .expect("mailto URLs cannot accept path segments");
 
-        assert!(error.to_string().contains("base URL does not support path segments"));
+        assert!(
+            error
+                .to_string()
+                .contains("base URL does not support path segments")
+        );
         Ok(())
     }
 
@@ -243,7 +274,9 @@ mod tests {
         let client = TransferClient::new(&server.url())?;
         let temp = tempdir()?;
         let output = temp.path().join("download.txt");
-        client.download_to_path(&format!("{}/download.txt", server.url()), &output).await?;
+        client
+            .download_to_path(&format!("{}/download.txt", server.url()), &output)
+            .await?;
 
         assert_eq!(std::fs::read_to_string(output)?, "downloaded");
         Ok(())
@@ -252,7 +285,11 @@ mod tests {
     #[tokio::test]
     async fn download_to_path_surfaces_http_failures() -> Result<()> {
         let mut server = Server::new_async().await;
-        let _mock = server.mock("GET", "/missing.txt").with_status(404).create_async().await;
+        let _mock = server
+            .mock("GET", "/missing.txt")
+            .with_status(404)
+            .create_async()
+            .await;
         let client = TransferClient::new(&server.url())?;
         let temp = tempdir()?;
         let output = temp.path().join("download.txt");
@@ -269,10 +306,16 @@ mod tests {
     #[tokio::test]
     async fn delete_calls_remote_endpoint() -> Result<()> {
         let mut server = Server::new_async().await;
-        let mock = server.mock("DELETE", "/delete/file").with_status(200).create_async().await;
+        let mock = server
+            .mock("DELETE", "/delete/file")
+            .with_status(200)
+            .create_async()
+            .await;
         let client = TransferClient::new(&server.url())?;
 
-        client.delete(&format!("{}/delete/file", server.url())).await?;
+        client
+            .delete(&format!("{}/delete/file", server.url()))
+            .await?;
         mock.assert_async().await;
         Ok(())
     }
@@ -280,7 +323,11 @@ mod tests {
     #[tokio::test]
     async fn delete_surfaces_http_errors() -> Result<()> {
         let mut server = Server::new_async().await;
-        let _mock = server.mock("DELETE", "/delete/file").with_status(500).create_async().await;
+        let _mock = server
+            .mock("DELETE", "/delete/file")
+            .with_status(500)
+            .create_async()
+            .await;
         let client = TransferClient::new(&server.url())?;
 
         let error = client

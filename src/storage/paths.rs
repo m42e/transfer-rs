@@ -59,9 +59,18 @@ mod tests {
 
         assert_eq!(paths.config_dir, config_dir);
         assert_eq!(paths.data_dir, data_dir);
-        assert_eq!(paths.config_file, std::path::PathBuf::from("/tmp/config-root/config.toml"));
-        assert_eq!(paths.db_path, std::path::PathBuf::from("/tmp/data-root/history.sqlite3"));
-        assert_eq!(paths.identity_path, std::path::PathBuf::from("/tmp/data-root/identity.agekey"));
+        assert_eq!(
+            paths.config_file,
+            std::path::PathBuf::from("/tmp/config-root/config.toml")
+        );
+        assert_eq!(
+            paths.db_path,
+            std::path::PathBuf::from("/tmp/data-root/history.sqlite3")
+        );
+        assert_eq!(
+            paths.identity_path,
+            std::path::PathBuf::from("/tmp/data-root/identity.agekey")
+        );
     }
 
     #[test]

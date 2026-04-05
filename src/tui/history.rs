@@ -5,7 +5,9 @@ use anyhow::{Context, Result};
 use arboard::Clipboard;
 use crossterm::event::{self, Event, KeyCode};
 use crossterm::execute;
-use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode};
+use crossterm::terminal::{
+    EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
+};
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Constraint, Layout};
@@ -33,7 +35,9 @@ impl HistoryApp {
             records: Vec::new(),
             selected: 0,
             table_state: TableState::default(),
-            status: String::from("Press q to quit, d to delete, x to remove local record, c to copy URL."),
+            status: String::from(
+                "Press q to quit, d to delete, x to remove local record, c to copy URL.",
+            ),
             store,
             transfer,
         }
@@ -68,14 +72,19 @@ impl HistoryApp {
     }
 
     fn render(&mut self, frame: &mut ratatui::Frame<'_>) {
-        let layout = Layout::vertical([Constraint::Min(5), Constraint::Length(3)]).split(frame.area());
+        let layout =
+            Layout::vertical([Constraint::Min(5), Constraint::Length(3)]).split(frame.area());
         let rows = self.records.iter().map(|record| {
             Row::new(vec![
                 Cell::from(record.original_name.clone()),
                 Cell::from(record.uploaded_at.format("%Y-%m-%d %H:%M").to_string()),
                 Cell::from(format_bytes(record.size_bytes)),
                 Cell::from(record.encryption_mode.to_string()),
-                Cell::from(if record.is_deleted { "deleted" } else { "active" }),
+                Cell::from(if record.is_deleted {
+                    "deleted"
+                } else {
+                    "active"
+                }),
             ])
         });
 
@@ -181,7 +190,8 @@ impl HistoryApp {
     }
 
     fn sync_selection(&mut self) {
-        self.table_state.select((!self.records.is_empty()).then_some(self.selected));
+        self.table_state
+            .select((!self.records.is_empty()).then_some(self.selected));
     }
 }
 
@@ -245,11 +255,18 @@ mod tests {
             source_path: Some(format!("/tmp/{id}.txt")),
             download_url: format!("https://example.invalid/{id}.txt"),
             delete_url: format!("https://example.invalid/delete/{id}.txt"),
-            uploaded_at: Utc.with_ymd_and_hms(2024, 1, 2, 3, 4, 5).single().expect("valid time"),
+            uploaded_at: Utc
+                .with_ymd_and_hms(2024, 1, 2, 3, 4, 5)
+                .single()
+                .expect("valid time"),
             size_bytes: 1536,
             encryption_mode: EncryptionMode::Passphrase,
             is_deleted: deleted,
-            deleted_at: deleted.then(|| Utc.with_ymd_and_hms(2024, 1, 3, 3, 4, 5).single().expect("valid time")),
+            deleted_at: deleted.then(|| {
+                Utc.with_ymd_and_hms(2024, 1, 3, 3, 4, 5)
+                    .single()
+                    .expect("valid time")
+            }),
         }
     }
 
@@ -262,7 +279,11 @@ mod tests {
         let paths = AppPaths::from_dirs(config_dir, data_dir);
         let store = HistoryStore::new(&paths)?;
         let transfer = TransferClient::new("https://example.invalid")?;
-        let app = HistoryApp::new(HistoryStore::new(&paths)?, TransferClient::new("https://example.invalid")?, false);
+        let app = HistoryApp::new(
+            HistoryStore::new(&paths)?,
+            TransferClient::new("https://example.invalid")?,
+            false,
+        );
         Ok((root, store, transfer, app))
     }
 
@@ -337,7 +358,11 @@ mod tests {
 
         store.insert_record(&sample_record("one", false))?;
         store.insert_record(&sample_record("two", true))?;
-        app = HistoryApp::new(store, TransferClient::new("https://example.invalid")?, false);
+        app = HistoryApp::new(
+            store,
+            TransferClient::new("https://example.invalid")?,
+            false,
+        );
         app.reload()?;
         assert_eq!(app.records.len(), 1);
         assert_eq!(app.records[0].id, "one");
@@ -369,7 +394,11 @@ mod tests {
 
         let record = sample_record("one", false);
         store.insert_record(&record)?;
-        app = HistoryApp::new(store, TransferClient::new("https://example.invalid")?, false);
+        app = HistoryApp::new(
+            store,
+            TransferClient::new("https://example.invalid")?,
+            false,
+        );
         app.reload()?;
         app.remove_local_record()?;
         assert_eq!(app.status, "No history entries yet.");
@@ -386,7 +415,11 @@ mod tests {
         std::fs::create_dir_all(&data_dir)?;
         let paths = AppPaths::from_dirs(config_dir, data_dir);
         let store = HistoryStore::new(&paths)?;
-        let mut app = HistoryApp::new(store, TransferClient::new("https://example.invalid")?, false);
+        let mut app = HistoryApp::new(
+            store,
+            TransferClient::new("https://example.invalid")?,
+            false,
+        );
         app.delete_selected_remote().await?;
         assert_eq!(app.status, "No record selected.");
 
@@ -397,7 +430,11 @@ mod tests {
         };
         let store = HistoryStore::new(&paths)?;
         store.insert_record(&success_record)?;
-        let _success_mock = success_server.mock("DELETE", "/delete/one").with_status(200).create_async().await;
+        let _success_mock = success_server
+            .mock("DELETE", "/delete/one")
+            .with_status(200)
+            .create_async()
+            .await;
         let mut app = HistoryApp::new(store, TransferClient::new(&success_server.url())?, true);
         app.reload()?;
         app.delete_selected_remote().await?;
@@ -405,7 +442,8 @@ mod tests {
         assert!(app.records[0].is_deleted);
 
         let mut failure_server = Server::new_async().await;
-        let failure_paths = AppPaths::from_dirs(root.path().join("config2"), root.path().join("data2"));
+        let failure_paths =
+            AppPaths::from_dirs(root.path().join("config2"), root.path().join("data2"));
         std::fs::create_dir_all(&failure_paths.config_dir)?;
         std::fs::create_dir_all(&failure_paths.data_dir)?;
         let failure_store = HistoryStore::new(&failure_paths)?;
@@ -414,8 +452,16 @@ mod tests {
             ..sample_record("two", false)
         };
         failure_store.insert_record(&failure_record)?;
-        let _failure_mock = failure_server.mock("DELETE", "/delete/two").with_status(500).create_async().await;
-        let mut failure_app = HistoryApp::new(failure_store, TransferClient::new(&failure_server.url())?, false);
+        let _failure_mock = failure_server
+            .mock("DELETE", "/delete/two")
+            .with_status(500)
+            .create_async()
+            .await;
+        let mut failure_app = HistoryApp::new(
+            failure_store,
+            TransferClient::new(&failure_server.url())?,
+            false,
+        );
         failure_app.reload()?;
         failure_app.delete_selected_remote().await?;
         assert!(failure_app.status.contains("Delete failed for two.txt"));

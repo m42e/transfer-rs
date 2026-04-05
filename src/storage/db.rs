@@ -208,7 +208,10 @@ mod tests {
             source_path: Some(format!("/tmp/{id}.txt")),
             download_url: url.to_owned(),
             delete_url: format!("{url}/delete"),
-            uploaded_at: Utc.with_ymd_and_hms(2024, 1, 2, 3, 4, 5).single().expect("valid time"),
+            uploaded_at: Utc
+                .with_ymd_and_hms(2024, 1, 2, 3, 4, 5)
+                .single()
+                .expect("valid time"),
             size_bytes: 512,
             encryption_mode: EncryptionMode::Identity,
             is_deleted: false,
@@ -221,7 +224,10 @@ mod tests {
         let (_root, _paths, store) = test_store()?;
         let first = sample_record("one", "https://example.invalid/one");
         let mut second = sample_record("two", "https://example.invalid/two");
-        second.uploaded_at = Utc.with_ymd_and_hms(2024, 1, 3, 3, 4, 5).single().expect("valid time");
+        second.uploaded_at = Utc
+            .with_ymd_and_hms(2024, 1, 3, 3, 4, 5)
+            .single()
+            .expect("valid time");
         second.encryption_mode = EncryptionMode::Passphrase;
 
         store.insert_record(&first)?;
@@ -232,7 +238,9 @@ mod tests {
         assert_eq!(active[0].id, "two");
         assert_eq!(active[1].id, "one");
 
-        let by_url = store.find_by_download_url("https://example.invalid/one")?.expect("record by url");
+        let by_url = store
+            .find_by_download_url("https://example.invalid/one")?
+            .expect("record by url");
         assert_eq!(by_url.id, "one");
         assert_eq!(by_url.encryption_mode, EncryptionMode::Identity);
 
@@ -246,7 +254,10 @@ mod tests {
         assert_eq!(active_after_delete[0].id, "two");
 
         let all = store.list_records(true)?;
-        let deleted = all.iter().find(|record| record.id == "one").expect("deleted record present");
+        let deleted = all
+            .iter()
+            .find(|record| record.id == "one")
+            .expect("deleted record present");
         assert!(deleted.is_deleted);
         assert!(deleted.deleted_at.is_some());
 
@@ -259,7 +270,11 @@ mod tests {
     fn find_methods_return_none_for_unknown_entries() -> Result<()> {
         let (_root, _paths, store) = test_store()?;
 
-        assert!(store.find_by_download_url("https://missing.invalid")?.is_none());
+        assert!(
+            store
+                .find_by_download_url("https://missing.invalid")?
+                .is_none()
+        );
         assert!(store.find_by_id_or_url("missing")?.is_none());
         Ok(())
     }
@@ -289,7 +304,9 @@ mod tests {
         )?;
 
         let store = HistoryStore::new(&paths)?;
-        let error = store.list_records(true).expect_err("invalid timestamps should fail");
+        let error = store
+            .list_records(true)
+            .expect_err("invalid timestamps should fail");
 
         assert!(!error.to_string().is_empty());
         Ok(())
@@ -298,6 +315,11 @@ mod tests {
     #[test]
     fn parse_timestamp_accepts_rfc3339_values() {
         let parsed = parse_timestamp("2024-01-02T03:04:05Z").expect("valid timestamp");
-        assert_eq!(parsed, Utc.with_ymd_and_hms(2024, 1, 2, 3, 4, 5).single().expect("valid time"));
+        assert_eq!(
+            parsed,
+            Utc.with_ymd_and_hms(2024, 1, 2, 3, 4, 5)
+                .single()
+                .expect("valid time")
+        );
     }
 }

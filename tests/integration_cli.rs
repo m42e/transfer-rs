@@ -17,7 +17,12 @@ fn binary_path() -> std::path::PathBuf {
     assert_cmd::cargo::cargo_bin("transfer-rs")
 }
 
-fn run_pty_command<I, S>(args: I, home: &std::path::Path, cwd: &std::path::Path, input: &str) -> Result<String>
+fn run_pty_command<I, S>(
+    args: I,
+    home: &std::path::Path,
+    cwd: &std::path::Path,
+    input: &str,
+) -> Result<String>
 where
     I: IntoIterator<Item = S>,
     S: AsRef<str>,
@@ -107,14 +112,24 @@ fn plain_upload_download_delete_flow_via_binary() -> Result<()> {
     upload
         .env("HOME", home.path())
         .current_dir(workdir.path())
-        .args(["--server", &server.url(), "upload", source.to_str().context("source path")?]);
-    upload
-        .assert()
-        .success()
-        .stdout(contains("Uploaded: source.txt").and(contains(&download_url)).and(contains(&delete_url)));
+        .args([
+            "--server",
+            &server.url(),
+            "upload",
+            source.to_str().context("source path")?,
+        ]);
+    upload.assert().success().stdout(
+        contains("Uploaded: source.txt")
+            .and(contains(&download_url))
+            .and(contains(&delete_url)),
+    );
     upload_mock.assert();
 
-    let download_mock = server.mock("GET", "/source.txt").with_status(200).with_body("plain payload").create();
+    let download_mock = server
+        .mock("GET", "/source.txt")
+        .with_status(200)
+        .with_body("plain payload")
+        .create();
     std::fs::remove_file(&source)?;
 
     let mut download = Command::new(binary_path());
@@ -122,14 +137,17 @@ fn plain_upload_download_delete_flow_via_binary() -> Result<()> {
         .env("HOME", home.path())
         .current_dir(workdir.path())
         .args(["download", &download_url]);
-    download
-        .assert()
-        .success()
-        .stdout(contains("Saved:"));
+    download.assert().success().stdout(contains("Saved:"));
     download_mock.assert();
-    assert_eq!(std::fs::read_to_string(workdir.path().join("source.txt"))?, "plain payload");
+    assert_eq!(
+        std::fs::read_to_string(workdir.path().join("source.txt"))?,
+        "plain payload"
+    );
 
-    let delete_mock = server.mock("DELETE", "/delete/source.txt").with_status(200).create();
+    let delete_mock = server
+        .mock("DELETE", "/delete/source.txt")
+        .with_status(200)
+        .create();
     let mut delete = Command::new(binary_path());
     delete
         .env("HOME", home.path())
@@ -251,7 +269,11 @@ fn passphrase_download_flow_via_pty() -> Result<()> {
     let encrypted = workdir.path().join("secret.txt.age");
     let output = workdir.path().join("downloaded.txt");
     std::fs::write(&source, "very secret payload")?;
-    transfer_rs::client::crypto::encrypt_with_passphrase(&source, &encrypted, "secret-passphrase".to_owned())?;
+    transfer_rs::client::crypto::encrypt_with_passphrase(
+        &source,
+        &encrypted,
+        "secret-passphrase".to_owned(),
+    )?;
 
     let mut server = Server::new();
     let _download_mock = server
@@ -316,10 +338,7 @@ fn identity_download_flow_via_binary() -> Result<()> {
             "--output",
             output.to_str().context("output path")?,
         ]);
-    command
-        .assert()
-        .success()
-        .stdout(contains("Saved:"));
+    command.assert().success().stdout(contains("Saved:"));
     assert_eq!(std::fs::read_to_string(output)?, "identity payload");
     Ok(())
 }
@@ -368,7 +387,10 @@ fn history_command_handles_real_key_presses() -> Result<()> {
         None => unsafe { std::env::remove_var("HOME") },
     }
 
-    let delete_two = server.mock("DELETE", "/delete/two").with_status(200).create();
+    let delete_two = server
+        .mock("DELETE", "/delete/two")
+        .with_status(200)
+        .create();
     run_pty_command(
         ["--server", &server.url(), "history", "--show-deleted"],
         home.path(),
@@ -377,8 +399,18 @@ fn history_command_handles_real_key_presses() -> Result<()> {
     )?;
 
     delete_two.assert();
-    assert!(store.find_by_id_or_url("two")?.context("missing deleted record")?.is_deleted);
-    assert!(!store.find_by_id_or_url("one")?.context("missing remaining record")?.is_deleted);
+    assert!(
+        store
+            .find_by_id_or_url("two")?
+            .context("missing deleted record")?
+            .is_deleted
+    );
+    assert!(
+        !store
+            .find_by_id_or_url("one")?
+            .context("missing remaining record")?
+            .is_deleted
+    );
     Ok(())
 }
 
@@ -392,10 +424,11 @@ fn binary_help_smoke_test() -> Result<()> {
         .env("HOME", home.path())
         .current_dir(workdir.path())
         .arg("--help");
-    command
-        .assert()
-        .success()
-        .stdout(contains("CLI client for transfer.sh-compatible instances").and(contains("upload")).and(contains("history")));
+    command.assert().success().stdout(
+        contains("CLI client for transfer.sh-compatible instances")
+            .and(contains("upload"))
+            .and(contains("history")),
+    );
     Ok(())
 }
 

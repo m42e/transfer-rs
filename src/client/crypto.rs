@@ -1,8 +1,8 @@
 use std::fs::{self, File};
 use std::io::{BufReader, BufWriter};
+use std::iter;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-use std::iter;
 
 use age::secrecy::{ExposeSecret, SecretString};
 use anyhow::{Context, Result};
@@ -68,21 +68,28 @@ pub fn prepare_identity_upload(
 }
 
 pub fn encrypt_with_passphrase(source: &Path, output: &Path, passphrase: String) -> Result<()> {
-    let input = File::open(source).with_context(|| format!("failed to open {}", source.display()))?;
-    let output = File::create(output).with_context(|| format!("failed to create {}", output.display()))?;
+    let input =
+        File::open(source).with_context(|| format!("failed to open {}", source.display()))?;
+    let output =
+        File::create(output).with_context(|| format!("failed to create {}", output.display()))?;
     let encryptor = age::Encryptor::with_user_passphrase(SecretString::from(passphrase));
     let mut writer = encryptor
         .wrap_output(BufWriter::new(output))
         .context("failed to start passphrase encryption")?;
     std::io::copy(&mut BufReader::new(input), &mut writer).context("failed to encrypt file")?;
-    writer.finish().context("failed to finalize encrypted file")?;
+    writer
+        .finish()
+        .context("failed to finalize encrypted file")?;
     Ok(())
 }
 
 pub fn decrypt_passphrase_file(input: &Path, output: &Path, passphrase: String) -> Result<()> {
-    let input_file = File::open(input).with_context(|| format!("failed to open {}", input.display()))?;
-    let output_file = File::create(output).with_context(|| format!("failed to create {}", output.display()))?;
-    let decryptor = age::Decryptor::new(BufReader::new(input_file)).context("failed to read encrypted payload")?;
+    let input_file =
+        File::open(input).with_context(|| format!("failed to open {}", input.display()))?;
+    let output_file =
+        File::create(output).with_context(|| format!("failed to create {}", output.display()))?;
+    let decryptor = age::Decryptor::new(BufReader::new(input_file))
+        .context("failed to read encrypted payload")?;
 
     if !decryptor.is_scrypt() {
         anyhow::bail!("payload requires an identity, not a passphrase");
@@ -103,21 +110,28 @@ pub fn encrypt_with_identity(source: &Path, output: &Path, paths: &AppPaths) -> 
     let recipient = identity.to_public();
     let encryptor = age::Encryptor::with_recipients(iter::once(&recipient as &dyn age::Recipient))
         .context("failed to create identity encryptor")?;
-    let input = File::open(source).with_context(|| format!("failed to open {}", source.display()))?;
-    let output = File::create(output).with_context(|| format!("failed to create {}", output.display()))?;
+    let input =
+        File::open(source).with_context(|| format!("failed to open {}", source.display()))?;
+    let output =
+        File::create(output).with_context(|| format!("failed to create {}", output.display()))?;
     let mut writer = encryptor
         .wrap_output(BufWriter::new(output))
         .context("failed to start identity encryption")?;
     std::io::copy(&mut BufReader::new(input), &mut writer).context("failed to encrypt file")?;
-    writer.finish().context("failed to finalize encrypted file")?;
+    writer
+        .finish()
+        .context("failed to finalize encrypted file")?;
     Ok(())
 }
 
 pub fn decrypt_identity_file(input: &Path, output: &Path, paths: &AppPaths) -> Result<()> {
     let identity = ensure_identity(paths)?;
-    let input_file = File::open(input).with_context(|| format!("failed to open {}", input.display()))?;
-    let output_file = File::create(output).with_context(|| format!("failed to create {}", output.display()))?;
-    let decryptor = age::Decryptor::new(BufReader::new(input_file)).context("failed to read encrypted payload")?;
+    let input_file =
+        File::open(input).with_context(|| format!("failed to open {}", input.display()))?;
+    let output_file =
+        File::create(output).with_context(|| format!("failed to create {}", output.display()))?;
+    let decryptor = age::Decryptor::new(BufReader::new(input_file))
+        .context("failed to read encrypted payload")?;
 
     if decryptor.is_scrypt() {
         anyhow::bail!("payload requires a passphrase, not the local identity");
@@ -149,11 +163,12 @@ fn ensure_identity(paths: &AppPaths) -> Result<age::x25519::Identity> {
 mod tests {
     use super::{
         PreparedUpload, decrypt_identity_file, decrypt_passphrase_file, encrypt_with_identity,
-        encrypt_with_passphrase, ensure_identity, prepare_identity_upload, prepare_passphrase_upload,
+        encrypt_with_passphrase, ensure_identity, prepare_identity_upload,
+        prepare_passphrase_upload,
     };
-    use age::secrecy::ExposeSecret;
     use crate::model::EncryptionMode;
     use crate::storage::paths::AppPaths;
+    use age::secrecy::ExposeSecret;
     use anyhow::Result;
     use tempfile::{TempDir, tempdir};
 
@@ -253,7 +268,11 @@ mod tests {
 
         let prepared = prepare_passphrase_upload(&source, "plain.txt", "upload-secret".to_owned())?;
         let decrypted = root.path().join("decrypted.txt");
-        decrypt_passphrase_file(prepared.upload_path(), &decrypted, "upload-secret".to_owned())?;
+        decrypt_passphrase_file(
+            prepared.upload_path(),
+            &decrypted,
+            "upload-secret".to_owned(),
+        )?;
 
         assert_eq!(prepared.remote_name, "plain.txt.age");
         assert_eq!(prepared.mode, EncryptionMode::Passphrase);
@@ -287,7 +306,10 @@ mod tests {
 
         assert!(paths.identity_path.exists());
         assert_eq!(stored.trim(), generated.to_string().expose_secret());
-        assert_eq!(loaded.to_string().expose_secret(), generated.to_string().expose_secret());
+        assert_eq!(
+            loaded.to_string().expose_secret(),
+            generated.to_string().expose_secret()
+        );
         Ok(())
     }
 

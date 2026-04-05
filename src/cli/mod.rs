@@ -6,7 +6,11 @@ use clap::{Args, Parser, Subcommand};
 use crate::commands;
 
 #[derive(Debug, Parser)]
-#[command(author, version, about = "CLI client for transfer.sh-compatible instances")]
+#[command(
+    author,
+    version,
+    about = "CLI client for transfer.sh-compatible instances"
+)]
 pub struct Cli {
     #[arg(long, global = true)]
     pub server: Option<String>,
@@ -107,23 +111,34 @@ mod tests {
 
     #[test]
     fn parses_download_history_and_delete_commands() {
-        let download = Cli::try_parse_from(["transfer-rs", "download", "https://example.invalid/file.age", "--passphrase"])
-            .expect("download args parse");
+        let download = Cli::try_parse_from([
+            "transfer-rs",
+            "download",
+            "https://example.invalid/file.age",
+            "--passphrase",
+        ])
+        .expect("download args parse");
         assert!(matches!(download.command, Command::Download(_)));
 
         let history = Cli::try_parse_from(["transfer-rs", "history", "--show-deleted"])
             .expect("history args parse");
         assert!(matches!(history.command, Command::History(_)));
 
-        let delete = Cli::try_parse_from(["transfer-rs", "delete", "record-id"])
-            .expect("delete args parse");
+        let delete =
+            Cli::try_parse_from(["transfer-rs", "delete", "record-id"]).expect("delete args parse");
         assert!(matches!(delete.command, Command::Delete(_)));
     }
 
     #[test]
     fn rejects_conflicting_encryption_flags() {
-        let error = Cli::try_parse_from(["transfer-rs", "upload", "file.txt", "--passphrase", "--identity"])
-            .expect_err("conflicting upload flags should fail");
+        let error = Cli::try_parse_from([
+            "transfer-rs",
+            "upload",
+            "file.txt",
+            "--passphrase",
+            "--identity",
+        ])
+        .expect_err("conflicting upload flags should fail");
         assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
 
         let error = Cli::try_parse_from([

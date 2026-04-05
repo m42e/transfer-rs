@@ -92,7 +92,10 @@ fn infer_encryption_mode(url: &str) -> EncryptionMode {
     }
 }
 
-fn resolve_mode(args: &DownloadArgs, record: Option<&crate::model::UploadRecord>) -> EncryptionMode {
+fn resolve_mode(
+    args: &DownloadArgs,
+    record: Option<&crate::model::UploadRecord>,
+) -> EncryptionMode {
     if args.passphrase {
         EncryptionMode::Passphrase
     } else if args.identity {
@@ -120,7 +123,10 @@ mod tests {
             source_path: Some("/tmp/original.txt".to_owned()),
             download_url: "https://example.invalid/original.txt.age".to_owned(),
             delete_url: "https://example.invalid/delete/original.txt.age".to_owned(),
-            uploaded_at: Utc.with_ymd_and_hms(2024, 1, 2, 3, 4, 5).single().expect("valid time"),
+            uploaded_at: Utc
+                .with_ymd_and_hms(2024, 1, 2, 3, 4, 5)
+                .single()
+                .expect("valid time"),
             size_bytes: 12,
             encryption_mode: EncryptionMode::Identity,
             is_deleted: false,
@@ -140,8 +146,12 @@ mod tests {
     #[test]
     fn infer_output_path_prefers_history_record_name() {
         let record = sample_record();
-        let path = infer_output_path(&record.download_url, Some(&record), EncryptionMode::Identity)
-            .expect("path from history");
+        let path = infer_output_path(
+            &record.download_url,
+            Some(&record),
+            EncryptionMode::Identity,
+        )
+        .expect("path from history");
 
         assert_eq!(path, PathBuf::from("original.txt"));
     }
@@ -160,8 +170,12 @@ mod tests {
 
     #[test]
     fn infer_output_path_keeps_plain_filename_for_unencrypted_urls() {
-        let path = infer_output_path("https://example.invalid/files/archive.tar", None, EncryptionMode::None)
-            .expect("path from plain URL");
+        let path = infer_output_path(
+            "https://example.invalid/files/archive.tar",
+            None,
+            EncryptionMode::None,
+        )
+        .expect("path from plain URL");
 
         assert_eq!(path, PathBuf::from("archive.tar"));
     }
@@ -175,8 +189,14 @@ mod tests {
 
     #[test]
     fn infer_encryption_mode_detects_age_extension() {
-        assert_eq!(infer_encryption_mode("https://example.invalid/file.age"), EncryptionMode::Passphrase);
-        assert_eq!(infer_encryption_mode("https://example.invalid/file.txt"), EncryptionMode::None);
+        assert_eq!(
+            infer_encryption_mode("https://example.invalid/file.age"),
+            EncryptionMode::Passphrase
+        );
+        assert_eq!(
+            infer_encryption_mode("https://example.invalid/file.txt"),
+            EncryptionMode::None
+        );
     }
 
     #[test]
@@ -184,12 +204,21 @@ mod tests {
         let record = sample_record();
         let args = download_args("https://example.invalid/file.age");
         assert_eq!(resolve_mode(&args, Some(&record)), EncryptionMode::Identity);
-        assert_eq!(resolve_mode(&download_args("https://example.invalid/file.age"), None), EncryptionMode::Passphrase);
-        assert_eq!(resolve_mode(&download_args("https://example.invalid/file.txt"), None), EncryptionMode::None);
+        assert_eq!(
+            resolve_mode(&download_args("https://example.invalid/file.age"), None),
+            EncryptionMode::Passphrase
+        );
+        assert_eq!(
+            resolve_mode(&download_args("https://example.invalid/file.txt"), None),
+            EncryptionMode::None
+        );
 
         let mut passphrase = download_args("https://example.invalid/file.txt");
         passphrase.passphrase = true;
-        assert_eq!(resolve_mode(&passphrase, Some(&record)), EncryptionMode::Passphrase);
+        assert_eq!(
+            resolve_mode(&passphrase, Some(&record)),
+            EncryptionMode::Passphrase
+        );
 
         let mut identity = download_args("https://example.invalid/file.txt");
         identity.identity = true;
